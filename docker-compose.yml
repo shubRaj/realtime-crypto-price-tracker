@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  db:
+    container_name: db
+    image: 'postgres:13.4-alpine'
+    volumes:
+      - ./postgres_data:/var/lib/postgresql/data/
+    environment:
+      POSTGRES_DB: livecrypto
+      POSTGRES_USER: livecrypto
+      POSTGRES_PASSWORD: livecrypto
+      POSTGRES_HOST_AUTH_METHOD: trust
+
+  redis:
+    container_name: redis
+    image: 'redis:latest'
+
+  web:
+    build: .
+    command: sh -c "python ./manage.py makemigrations && python ./manage.py migrate && python ./manage.py makesuperuser && python ./manage.py collectstatic --noinput && gunicorn livecrypto.wsgi:application --bind 0.0.0.0:8000"
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+      - redis
+    links:
+      - db
+      - redis
+    restart: always
+    environment:
+      DATABASE_URL: "postgres://livecrypto:livecrypto@db:5432/livecrypto"
+      REDIS_URL: "redis://redis:6379/0"
+    
+  celery:
+    build: .
+    command: sh -c "celery -A livecrypto worker -B --loglevel=INFO"
+    volumes:
+      - .:/app
+    depends_on:
+      - redis
+      - db
+      - web
+    links:
+      - redis
+      - db
+    environment:
+      DATABASE_URL: "postgres://livecrypto:livecrypto@db:5432/livecrypto"
+      REDIS_URL: "redis://redis:6379/0"
